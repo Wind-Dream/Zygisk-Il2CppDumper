@@ -18,13 +18,41 @@
 #include <array>
 
 void hack_start(const char *game_data_dir) {
+    LOGI("hack_start: tid=%d, sleep 15s", gettid());
+    sleep(15);
+    LOGI("hack_start: wake up, looking for libil2cpp.so");
+
     bool load = false;
     for (int i = 0; i < 10; i++) {
         void *handle = xdl_open("libil2cpp.so", 0);
         if (handle) {
             load = true;
+            LOGI("libil2cpp handle: %p", handle);
+
+            // 先检查关键导出函数是否存在，缺了就不dump，避免空指针崩溃
+            const char *syms[] = {
+                "il2cpp_domain_get",
+                "il2cpp_domain_get_assemblies",
+                "il2cpp_is_vm_thread",
+                "il2cpp_thread_attach",
+                "il2cpp_class_from_name",
+                "il2cpp_image_get_class_count",
+            };
+            bool ok = true;
+            for (auto s : syms) {
+                void *p = xdl_sym(handle, s, nullptr);
+                LOGI("  %s = %p", s, p);
+                if (!p) ok = false;
+            }
+            if (!ok) {
+                LOGE("il2cpp exports missing, skip dump");
+                break;
+            }
+
             il2cpp_api_init(handle);
+            LOGI("api init done, start dump");
             il2cpp_dump(game_data_dir);
+            LOGI("dump finished");
             break;
         } else {
             sleep(1);
